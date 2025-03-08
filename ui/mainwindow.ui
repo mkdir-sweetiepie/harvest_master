@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ui/mainwindow.ui -->
+<ui version="4.0">
+  <class>MainWindowDesign</class>
+  <widget class="QMainWindow" name="MainWindowDesign">
+    <property name="geometry">
+      <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>1200</width>
+        <height>800</height>
+      </rect>
+    </property>
+    <property name="windowTitle">
+      <string>BARAM 농작물 수확 로봇 관제 시스템</string>
+    </property>
+    <property name="windowIcon">
+      <iconset resource="../resources/images.qrc">
+        <normaloff>:/images/icon.png</normaloff>:/images/icon.png</iconset>
+    </property>
+    <property name="locale">
+      <locale language="Korean" country="SouthKorea" />
+    </property>
+    <widget class="QWidget" name="centralwidget">
+      <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+          <widget class="QGroupBox" name="statusGroupBox">
+            <property name="title">
+              <string>시스템 상태</string>
+            </property>
+            <property name="minimumSize">
+              <size>
+                <width>0</width>
+                <height>120</height>
+              </size>
+            </property>
+            <layout class="QGridLayout" name="statusGridLayout">
+              <item row="0" column="0">
+                <widget class="QLabel" name="stateTextLabel">
+                  <property name="text">
+                    <string>전체 상태:</string>
+                  </property>
+                  <property name="font">
+                    <font>
+                      <weight>75</weight>
+                      <bold>true</bold>
+                    </font>
+                  </property>
+                </widget>
+              </item>
+              <item row="0" column="1">
+                <widget class="QLabel" name="stateValueLabel">
+                  <property name="text">
+                    <string>DISCONNECTED</string>
+                  </property>
+                  <property name="styleSheet">
+                    <string notr="true">QLabel { background-color: #ffcccc; padding: 8px;
+                      border-radius: 4px; font-weight: bold; }</string>
+                  </property>
+                </widget>
+              </item>
+              <item row="1" column="0">
+                <widget class="QLabel" name="visionTextLabel">
+                  <property name="text">
+                    <string>비전 시스템:</string>
+                  </property>
+                </widget>
+              </item>
+              <item row="1" column="1">
+                <widget class="QLabel" name="visionStatusLabel">
+                  <property name="text">
+                    <string>대기중</string>
+                  </property>
+                  <property name="styleSheet">
+                    <string notr="true">QLabel { background-color: #ffffcc; padding: 5px;
+                      border-radius: 3px; }</string>
+                  </property>
+                </widget>
+              </item>
+              <item row="1" column="2">
+                <widget class="QLabel" name="motorTextLabel">
+                  <property name="text">
+                    <string>모터 시스템:</string>
+                  </property>
+                </widget>
+              </item>
+              <item row="1" column="3">
+                <widget class="QLabel" name="motorStatusLabel">
+                  <property name="text">
+                    <string>대기중</string>
+                  </property>
+                  <property name="styleSheet">
+                    <string notr="true">QLabel { background-color: #ffffcc; padding: 5px;
+                      border-radius: 3px; }</string>
+                  </property>
+                </widget>
+              </item>
+              <item row="2" column="0">
+                <widget class="QLabel" name="planningTextLabel">
+                  <property name="text">
+                    <string>경로 계획:</string>
+                  </property>
+                </widget>
+              </item>
+              <item row="2" column="1">
+                <widget class="QLabel" name="planningStatusLabel">
+                  <property name="text">
+                    <string>대기중</string>
+                  </property>
+                  <property name="styleSheet">
+                    <string notr="true">QLabel { background-color: #ffffcc; padding: 5px;
+                      border-radius: 3px; }</string>
+                  </property>
+                </widget>
+              </item>
+              <item row="2" column="2">
+                <widget class="QLabel" name="robotTextLabel">
+                  <property name="text">
+                    <string>로봇 상태:</string>
+                  </property>
+                </widget>
+              </item>
+              <item row="2" column="3">
+                <widget class="QLabel" name="robotStatusLabel">
+                  <property name="text">
+                    <string>대기중</string>
+                  </property>
+                  <property name="styleSheet">
+                    <string notr="true">QLabel { background-color: #ffffcc; padding: 5px;
+                      border-radius: 3px; }</string>
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+        </item>
+        <item>
+          <widget class="QTabWidget" name="mainTabWidget">
+            <property name="currentIndex">
+              <number>0</number>
+            </property>
+            <widget class="QWidget" name="controlTab">
+              <attribute name="title">
+                <string>메인 제어</string>
+              </attribute>
+              <layout class="QVBoxLayout" name="controlLayout">
+                <item>
+                  <widget class="QGroupBox" name="mainControlGroup">
+                    <property name="title">
+                      <string>메인 제어</string>
+                    </property>
+                    <layout class="QGridLayout" name="mainControlLayout">
+                      <item row="0" column="0">
+                        <widget class="QPushButton" name="startButton">
+                          <property name="text">
+                            <string>수확 시작</string>
+                          </property>
+                          <property name="minimumSize">
+                            <size>
+                              <width>0</width>
+                              <height>60</height>
+                            </size>
+                          </property>
+                          <property name="styleSheet">
+                            <string notr="true">QPushButton {
+                              background-color: #4CAF50;
+                              color: white;
+                              font-size: 16px;
+                              font-weight: bold;
+                              padding: 15px;
+                              border-radius: 8px;
+                              border: none;
+                              }
+                              QPushButton:hover {
+                              background-color: #45a049;
+                              }
+                              QPushButton:pressed {
+                              background-color: #3d8b40;
+                              }</string>
+                          </property>
+                        </widget>
+                      </item>
+                      <item row="0" column="1">
+                        <widget class="QPushButton" name="stopButton">
+                          <property name="text">
+                            <string>수확 중지</string>
+                          </property>
+                          <property name="enabled">
+                            <bool>false</bool>
+                          </property>
+                          <property name="minimumSize">
+                            <size>
+                              <width>0</width>
+                              <height>60</height>
+                            </size>
+                          </property>
+                          <property name="styleSheet">
+                            <string notr="true">QPushButton {
+                              background-color: #FFC107;
+                              color: black;
+                              font-size: 16px;
+                              font-weight: bold;
+                              padding: 15px;
+                              border-radius: 8px;
+                              border: none;
+                              }
+                              QPushButton:hover {
+                              background-color: #e0a800;
+                              }
+                              QPushButton:pressed {
+                              background-color: #d39e00;
+                              }</string>
+                          </property>
+                        </widget>
+                      </item>
+                      <item row="1" column="0">
+                        <widget class="QPushButton" name="emergencyButton">
+                          <property name="text">
+                            <string>긴급 정지</string>
+                          </property>
+                          <property name="minimumSize">
+                            <size>
+                              <width>0</width>
+                              <height>60</height>
+                            </size>
+                          </property>
+                          <property name="styleSheet">
+                            <string notr="true">QPushButton {
+                              background-color: #F44336;
+                              color: white;
+                              font-size: 16px;
+                              font-weight: bold;
+                              padding: 15px;
+                              border-radius: 8px;
+                              border: none;
+                              }
+                              QPushButton:hover {
+                              background-color: #da190b;
+                              }
+                              QPushButton:pressed {
+                              background-color: #c0392b;
+                              }</string>
+                          </property>
+                        </widget>
+                      </item>
+                      <item row="1" column="1">
+                        <widget class="QPushButton" name="resetButton">
+                          <property name="text">
+                            <string>시스템 초기화</string>
+                          </property>
+                          <property name="minimumSize">
+                            <size>
+                              <width>0</width>
+                              <height>60</height>
+                            </size>
+                          </property>
+                          <property name="styleSheet">
+                            <string notr="true">QPushButton {
+                              background-color: #2196F3;
+                              color: white;
+                              font-size: 16px;
+                              font-weight: bold;
+                              padding: 15px;
+                              border-radius: 8px;
+                              border: none;
+                              }
+                              QPushButton:hover {
+                              background-color: #0b7dda;
+                              }
+                              QPushButton:pressed {
+                              background-color: #1976d2;
+                              }</string>
+                          </property>
+                        </widget>
+                      </item>
+                    </layout>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QGroupBox" name="progressGroup">
+                    <property name="title">
+                      <string>진행 상황</string>
+                    </property>
+                    <layout class="QVBoxLayout" name="progressLayout">
+                      <item>
+                        <widget class="QLabel" name="progressLabel">
+                          <property name="text">
+                            <string>대기 중</string>
+                          </property>
+                          <property name="font">
+                            <font>
+                              <pointsize>12</pointsize>
+                              <weight>75</weight>
+                              <bold>true</bold>
+                            </font>
+                          </property>
+                        </widget>
+                      </item>
+                      <item>
+                        <widget class="QProgressBar" name="progressBar">
+                          <property name="minimumSize">
+                            <size>
+                              <width>0</width>
+                              <height>30</height>
+                            </size>
+                          </property>
+                          <property name="value">
+                            <number>0</number>
+                          </property>
+                          <property name="styleSheet">
+                            <string notr="true">QProgressBar {
+                              border: 2px solid grey;
+                              border-radius: 5px;
+                              text-align: center;
+                              font-weight: bold;
+                              }
+                              QProgressBar::chunk {
+                              background-color: #4CAF50;
+                              border-radius: 3px;
+                              }</string>
+                          </property>
+                        </widget>
+                      </item>
+                    </layout>
+                  </widget>
+                </item>
+              </layout>
+            </widget>
+            <widget class="QWidget" name="visionTab">
+              <attribute name="title">
+                <string>비전 시스템</string>
+              </attribute>
+            </widget>
+            <widget class="QWidget" name="motorTab">
+              <attribute name="title">
+                <string>모터 제어</string>
+              </attribute>
+            </widget>
+            <widget class="QWidget" name="planningTab">
+              <attribute name="title">
+                <string>경로 계획</string>
+              </attribute>
+            </widget>
+            <widget class="QWidget" name="logTab">
+              <attribute name="title">
+                <string>로그</string>
+              </attribute>
+            </widget>
+          </widget>
+        </item>
+      </layout>
+    </widget>
+    <widget class="QMenuBar" name="menubar">
+      <property name="geometry">
+        <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>1200</width>
+          <height>22</height>
+        </rect>
+      </property>
+      <widget class="QMenu" name="menuFile">
+        <property name="title">
+          <string>파일</string>
+        </property>
+        <addaction name="actionSaveLog" />
+        <addaction name="separator" />
+        <addaction name="actionQuit" />
+      </widget>
+      <widget class="QMenu" name="menuSystem">
+        <property name="title">
+          <string>시스템</string>
+        </property>
+        <addaction name="actionCalibrate" />
+        <addaction name="actionSettings" />
+        <addaction name="separator" />
+        <addaction name="actionAbout" />
+      </widget>
+      <addaction name="menuFile" />
+      <addaction name="menuSystem" />
+    </widget>
+    <widget class="QStatusBar" name="statusbar" />
+    <action name="actionQuit">
+      <property name="text">
+        <string>종료(&amp;Q)</string>
+      </property>
+      <property name="shortcut">
+        <string>Ctrl+Q</string>
+      </property>
+    </action>
+    <action name="actionSaveLog">
+      <property name="text">
+        <string>로그 저장(&amp;S)</string>
+      </property>
+      <property name="shortcut">
+        <string>Ctrl+S</string>
+      </property>
+    </action>
+    <action name="actionCalibrate">
+      <property name="text">
+        <string>시스템 캘리브레이션(&amp;C)</string>
+      </property>
+    </action>
+    <action name="actionSettings">
+      <property name="text">
+        <string>설정(&amp;P)</string>
+      </property>
+    </action>
+    <action name="actionAbout">
+      <property name="text">
+        <string>정보(&amp;A)</string>
+      </property>
+    </action>
+  </widget>
+  <resources>
+    <include location="../resources/images.qrc" />
+  </resources>
+  <connections>
+    <connection>
+      <sender>actionQuit</sender>
+      <signal>triggered()</signal>
+      <receiver>MainWindowDesign</receiver>
+      <slot>close()</slot>
+      <hints>
+        <hint type="sourcelabel">
+          <x>-1</x>
+          <y>-1</y>
+        </hint>
+        <hint type="destinationlabel">
+          <x>599</x>
+          <y>399</y>
+        </hint>
+      </hints>
+    </connection>
+  </connections>
+</ui>
