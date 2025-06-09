@@ -1,232 +1,389 @@
-// src/qnode.cpp
+/**
+ * @file /src/qnode.cpp
+ *
+ * @brief Ros communication central!
+ *
+ * @date January 2025
+ **/
+
+/*****************************************************************************
+** Includes
+*****************************************************************************/
+
 #include "../include/harvest_master/qnode.hpp"
 
-QNode::QNode()
-    : current_state_("DISCONNECTED"), detected_crops_count_(0), current_target_index_(0), total_targets_(0), system_ready_(false), vision_ready_(false), motor_ready_(false), planning_ready_(false) {
+/*****************************************************************************
+** Implementation
+*****************************************************************************/
+
+QNode::QNode() : vision_active_(false)
+{
   int argc = 0;
   char** argv = NULL;
   rclcpp::init(argc, argv);
-  node_ = rclcpp::Node::make_shared("harvest_master_gui");
-
-  // Publishers 초기화
-  state_pub_ = node_->create_publisher<std_msgs::msg::String>("/system_state", 10);
-  camera_trigger_pub_ = node_->create_publisher<std_msgs::msg::Bool>("/camera_trigger", 10);
-  joint_velocity_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>("/joint_velocity", 10);
-  path_request_pub_ = node_->create_publisher<geometry_msgs::msg::Pose>("/path_planning_request", 10);
-  cutting_trigger_pub_ = node_->create_publisher<std_msgs::msg::Bool>("/cutting_trigger", 10);
-  command_pub_ = node_->create_publisher<std_msgs::msg::String>("/system_command", 10);
-
-  // Subscribers 초기화
-  crop_detection_sub_ = node_->create_subscription<geometry_msgs::msg::PoseArray>("/detected_crops", 10, std::bind(&QNode::cropDetectionCallback, this, std::placeholders::_1));
-
-  harvest_order_sub_ = node_->create_subscription<std_msgs::msg::Float64MultiArray>("/harvest_order", 10, std::bind(&QNode::harvestOrderCallback, this, std::placeholders::_1));
-
-  planned_path_sub_ = node_->create_subscription<std_msgs::msg::Float64MultiArray>("/planned_path", 10, std::bind(&QNode::plannedPathCallback, this, std::placeholders::_1));
-
-  foundation_pose_sub_ = node_->create_subscription<geometry_msgs::msg::Pose>("/crop_6d_pose", 10, std::bind(&QNode::foundationPoseCallback, this, std::placeholders::_1));
-
-  robot_status_sub_ = node_->create_subscription<std_msgs::msg::String>("/robot_status", 10, std::bind(&QNode::robotStatusCallback, this, std::placeholders::_1));
-
-  vision_status_sub_ = node_->create_subscription<std_msgs::msg::String>("/vision_status", 10, std::bind(&QNode::visionStatusCallback, this, std::placeholders::_1));
-
-  motor_status_sub_ = node_->create_subscription<std_msgs::msg::String>("/motor_status", 10, std::bind(&QNode::motorStatusCallback, this, std::placeholders::_1));
-
-  planning_status_sub_ = node_->create_subscription<std_msgs::msg::String>("/planning_status", 10, std::bind(&QNode::planningStatusCallback, this, std::placeholders::_1));
-
+  node = rclcpp::Node::make_shared("harvest_master");
+  
+  // Initialize subscribers
+  image_subscriber_ = node->create_subscription<sensor_msgs::msg::Image>(
+    "/camera/camera/color/image_raw", 10,
+    std::bind(&QNode::imageCallback, this, std::placeholders::_1));
+    
+  status_subscriber_ = node->create_subscription<std_msgs::msg::String>(
+    "/harvest_master/status", 10,
+    std::bind(&QNode::statusCallback, this, std::placeholders::_1));
+  
+  // Initialize publishers
+  vision_control_publisher_ = node->create_publisher<std_msgs::msg::Bool>(
+    "/harvest_master/vision_control", 10);
+    
+  target_publisher_ = node->create_publisher<geometry_msgs::msg::Point>(
+    "/harvest_master/target_position", 10);
+    
+  command_publisher_ = node->create_publisher<std_msgs::msg::String>(
+    "/harvest_master/command", 10);
+  
+  RCLCPP_INFO(node->get_logger(), "Harvest Master Node initialized");
   this->start();
 }
 
-QNode::~QNode() {
-  if (rclcpp::ok()) {
+QNode::~QNode()
+{
+  if (rclcpp::ok())
+  {
     rclcpp::shutdown();
   }
 }
 
-void QNode::run() {
-  rclcpp::WallRate loop_rate(30);  // 30Hz
-  current_state_ = "READY";
-  Q_EMIT stateChanged(current_state_);
-  Q_EMIT logMessage("ROS 2 시스템 초기화 완료");
-
-  while (rclcpp::ok()) {
-    rclcpp::spin_some(node_);
+void QNode::run()
+{
+  rclcpp::WallRate loop_rate(20);
+  while (rclcpp::ok())
+  {
+    rclcpp::spin_some(node);
     loop_rate.sleep();
   }
   rclcpp::shutdown();
   Q_EMIT rosShutDown();
 }
 
-void QNode::startHarvestSequence() {
+/*****************************************************************************
+** Vision System Methods
+*****************************************************************************/
+
+void QNode::startVisionSystem()
+{
+  vision_active_ = true;
+  
+  auto msg = std_msgs::msg::Bool();
+  msg.data = true;
+  vision_control_publisher_->publish(msg);
+  
+  auto status_msg = std_msgs::msg::String();
+  status_msg.data = "VISION_STARTED";
+  command_publisher_->publish(status_msg);
+  
+  RCLCPP_INFO(node->get_logger(), "Vision system started");
+}
+
+void QNode::stopVisionSystem()
+{
+  vision_active_ = false;
+  
+  auto msg = std_msgs::msg::Bool();
+  msg.data = false;
+  vision_control_publisher_->publish(msg);
+  
+  auto status_msg = std_msgs::msg::String();
+  status_msg.data = "VISION_STOPPED";
+  command_publisher_->publish(status_msg);
+  
+  RCLCPP_INFO(node->get_logger(), "Vision system stopped");
+}
+
+void QNode::captureImage()
+{
+  if (!current_image_.empty())
+  {
+    std::string filename = "/tmp/harvest_capture_" + 
+                          std::to_string(std::time(nullptr)) + ".jpg";
+    cv::imwrite(filename, current_image_);
+    
+    auto msg = std_msgs::msg::String();
+    msg.data = "IMAGE_CAPTURED:" + filename;
+    command_publisher_->publish(msg);
+    
+    RCLCPP_INFO(node->get_logger(), "Image captured: %s", filename.c_str());
+  }
+}
+
+void QNode::calibrateCamera()
+{
+  auto msg = std_msgs::msg::String();
+  msg.data = "CALIBRATE_CAMERA";
+  command_publisher_->publish(msg);
+  
+  RCLCPP_INFO(node->get_logger(), "Camera calibration requested");
+}
+
+/*****************************************************************************
+** Manipulation Methods
+*****************************************************************************/
+
+void QNode::startHarvest()
+{
   auto msg = std_msgs::msg::String();
   msg.data = "START_HARVEST";
-  command_pub_->publish(msg);
-
-  current_state_ = "INITIALIZING";
-  Q_EMIT stateChanged(current_state_);
-  Q_EMIT logMessage("수확 시퀀스 시작");
+  command_publisher_->publish(msg);
+  
+  RCLCPP_INFO(node->get_logger(), "Harvest sequence started");
 }
 
-void QNode::stopHarvestSequence() {
+void QNode::moveToTarget(double x, double y, double z)
+{
+  auto msg = geometry_msgs::msg::Point();
+  msg.x = x;
+  msg.y = y;
+  msg.z = z;
+  target_publisher_->publish(msg);
+  
+  RCLCPP_INFO(node->get_logger(), "Moving to target: (%.2f, %.2f, %.2f)", x, y, z);
+}
+
+void QNode::controlGripper(bool close)
+{
   auto msg = std_msgs::msg::String();
-  msg.data = "STOP_HARVEST";
-  command_pub_->publish(msg);
-
-  current_state_ = "STOPPED";
-  Q_EMIT stateChanged(current_state_);
-  Q_EMIT logMessage("수확 시퀀스 중지");
+  msg.data = close ? "GRIPPER_CLOSE" : "GRIPPER_OPEN";
+  command_publisher_->publish(msg);
+  
+  RCLCPP_INFO(node->get_logger(), "Gripper command: %s", msg.data.c_str());
 }
 
-void QNode::emergencyStop() {
+void QNode::moveToHome()
+{
+  auto msg = std_msgs::msg::String();
+  msg.data = "MOVE_HOME";
+  command_publisher_->publish(msg);
+  
+  RCLCPP_INFO(node->get_logger(), "Moving to home position");
+}
+
+void QNode::moveToDropZone()
+{
+  auto msg = std_msgs::msg::String();
+  msg.data = "MOVE_DROP_ZONE";
+  command_publisher_->publish(msg);
+  
+  RCLCPP_INFO(node->get_logger(), "Moving to drop zone");
+}
+
+void QNode::emergencyStop()
+{
   auto msg = std_msgs::msg::String();
   msg.data = "EMERGENCY_STOP";
-  command_pub_->publish(msg);
-
-  current_state_ = "EMERGENCY";
-  Q_EMIT stateChanged(current_state_);
-  Q_EMIT logMessage("긴급 정지 실행!");
-  Q_EMIT errorOccurred("긴급 정지가 실행되었습니다.");
+  command_publisher_->publish(msg);
+  
+  RCLCPP_ERROR(node->get_logger(), "EMERGENCY STOP ACTIVATED");
 }
 
-void QNode::resetSystem() {
+void QNode::resetArm()
+{
   auto msg = std_msgs::msg::String();
-  msg.data = "RESET_SYSTEM";
-  command_pub_->publish(msg);
-
-  // 내부 상태 초기화
-  detected_crops_count_ = 0;
-  current_target_index_ = 0;
-  total_targets_ = 0;
-  detected_crops_.clear();
-  harvest_order_.clear();
-  last_error_.clear();
-
-  current_state_ = "READY";
-  Q_EMIT stateChanged(current_state_);
-  Q_EMIT logMessage("시스템 초기화 완료");
-  Q_EMIT progressUpdated(0, 0);
+  msg.data = "RESET_ARM";
+  command_publisher_->publish(msg);
+  
+  RCLCPP_INFO(node->get_logger(), "Arm reset requested");
 }
 
-void QNode::triggerVisionDetection() {
-  auto msg = std_msgs::msg::Bool();
-  msg.data = true;
-  camera_trigger_pub_->publish(msg);
-  Q_EMIT logMessage("비전 감지 트리거 전송");
-}
+/*****************************************************************************
+** Callback Functions
+*****************************************************************************/
 
-void QNode::moveToPosition(double x, double y, double z, double rx, double ry, double rz) {
-  auto msg = geometry_msgs::msg::Pose();
-  msg.position.x = x;
-  msg.position.y = y;
-  msg.position.z = z;
-
-  // Euler angles to quaternion (simplified)
-  msg.orientation.x = rx;
-  msg.orientation.y = ry;
-  msg.orientation.z = rz;
-  msg.orientation.w = 1.0;
-
-  path_request_pub_->publish(msg);
-  Q_EMIT logMessage(QString("위치 이동 요청: (%.3f, %.3f, %.3f)").arg(x).arg(y).arg(z));
-}
-
-void QNode::setJointVelocities(const std::vector<double>& velocities) {
-  if (velocities.size() != 6) {
-    Q_EMIT errorOccurred("관절 속도는 6개 값이 필요합니다.");
-    return;
-  }
-
-  auto msg = std_msgs::msg::Float64MultiArray();
-  msg.data = velocities;
-  joint_velocity_pub_->publish(msg);
-  Q_EMIT logMessage("관절 속도 명령 전송");
-}
-
-void QNode::activateCuttingTool() {
-  auto msg = std_msgs::msg::Bool();
-  msg.data = true;
-  cutting_trigger_pub_->publish(msg);
-  Q_EMIT logMessage("절단 도구 활성화");
-}
-
-void QNode::requestPathPlanning(const geometry_msgs::msg::Pose& target) {
-  path_request_pub_->publish(target);
-  Q_EMIT logMessage("경로 계획 요청");
-}
-
-// 콜백 함수들
-void QNode::cropDetectionCallback(const geometry_msgs::msg::PoseArray::SharedPtr msg) {
-  detected_crops_ = msg->poses;
-  detected_crops_count_ = msg->poses.size();
-
-  // 익은 참외와 안 익은 참외 분류 (간단히 z 좌표로 구분)
-  int ripe_count = 0;
-  int unripe_count = 0;
-
-  for (const auto& pose : msg->poses) {
-    if (pose.position.z > 0.5) {  // 임의 기준
-      ripe_count++;
-    } else {
-      unripe_count++;
+void QNode::imageCallback(const sensor_msgs::msg::Image::SharedPtr msg)
+{
+  try
+  {
+    // Convert ROS image to OpenCV Mat
+    cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    current_image_ = cv_ptr->image.clone();
+    
+    if (vision_active_)
+    {
+      // Process the image for melon detection
+      processed_image_ = processImage(current_image_);
+      
+      // Detect melons
+      detectMelons(processed_image_);
+      
+      // Convert processed image to QPixmap and emit signal
+      QPixmap pixmap = matToQPixmap(processed_image_);
+      Q_EMIT imageReceived(pixmap);
+    }
+    else
+    {
+      // Just display raw image
+      QPixmap pixmap = matToQPixmap(current_image_);
+      Q_EMIT imageReceived(pixmap);
     }
   }
-
-  Q_EMIT cropsDetected(detected_crops_count_);
-  Q_EMIT detectionComplete(ripe_count, unripe_count);
-  Q_EMIT logMessage(QString("참외 감지 완료: 총 %1개 (익은 것: %2개, 덜 익은 것: %3개)").arg(detected_crops_count_).arg(ripe_count).arg(unripe_count));
-}
-
-void QNode::harvestOrderCallback(const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
-  harvest_order_.clear();
-  QStringList orderList;
-
-  for (size_t i = 0; i < msg->data.size(); ++i) {
-    int cropIndex = static_cast<int>(msg->data[i]);
-    harvest_order_.push_back(cropIndex);
-    orderList << QString("참외 %1").arg(cropIndex + 1);
-  }
-
-  total_targets_ = harvest_order_.size();
-  Q_EMIT harvestOrderUpdated(orderList);
-  Q_EMIT logMessage(QString("수확 순서 계산 완료: %1개 목표").arg(total_targets_));
-}
-
-void QNode::plannedPathCallback(const std_msgs::msg::Float64MultiArray::SharedPtr /*msg*/) {
-  Q_EMIT pathPlanningComplete();
-  Q_EMIT logMessage("경로 계획 완료");
-}
-
-void QNode::foundationPoseCallback(const geometry_msgs::msg::Pose::SharedPtr msg) {
-  current_target_pose_ = *msg;
-  Q_EMIT foundationPoseComplete();
-  Q_EMIT logMessage(QString("6D Pose 추정 완료: (%.3f, %.3f, %.3f)").arg(msg->position.x).arg(msg->position.y).arg(msg->position.z));
-}
-
-void QNode::robotStatusCallback(const std_msgs::msg::String::SharedPtr msg) {
-  Q_EMIT robotStatusUpdated(QString::fromStdString(msg->data));
-
-  if (msg->data == "POSITION_REACHED") {
-    Q_EMIT positionReached();
-  } else if (msg->data == "CUTTING_COMPLETE") {
-    current_target_index_++;
-    Q_EMIT cuttingComplete();
-    Q_EMIT progressUpdated(current_target_index_, total_targets_);
+  catch (cv_bridge::Exception& e)
+  {
+    RCLCPP_ERROR(node->get_logger(), "cv_bridge exception: %s", e.what());
   }
 }
 
-void QNode::visionStatusCallback(const std_msgs::msg::String::SharedPtr msg) {
-  vision_ready_ = (msg->data == "READY");
-  Q_EMIT visionSystemReady();
-  Q_EMIT logMessage(QString("비전 시스템: %1").arg(QString::fromStdString(msg->data)));
+void QNode::statusCallback(const std_msgs::msg::String::SharedPtr msg)
+{
+  Q_EMIT systemStatusChanged(QString::fromStdString(msg->data));
 }
 
-void QNode::motorStatusCallback(const std_msgs::msg::String::SharedPtr msg) {
-  motor_ready_ = (msg->data == "READY");
-  Q_EMIT motorSystemReady();
-  Q_EMIT logMessage(QString("모터 시스템: %1").arg(QString::fromStdString(msg->data)));
+/*****************************************************************************
+** Image Processing Functions
+*****************************************************************************/
+
+QPixmap QNode::matToQPixmap(const cv::Mat& mat)
+{
+  if (mat.empty()) {
+    return QPixmap();
+  }
+  
+  QImage qimg;
+  
+  if (mat.channels() == 3) {
+    // BGR to RGB conversion
+    cv::Mat rgb;
+    cv::cvtColor(mat, rgb, cv::COLOR_BGR2RGB);
+    qimg = QImage(rgb.data, rgb.cols, rgb.rows, rgb.step, QImage::Format_RGB888);
+  } else if (mat.channels() == 1) {
+    qimg = QImage(mat.data, mat.cols, mat.rows, mat.step, QImage::Format_Grayscale8);
+  }
+  
+  return QPixmap::fromImage(qimg);
 }
 
-void QNode::planningStatusCallback(const std_msgs::msg::String::SharedPtr msg) {
-  planning_ready_ = (msg->data == "READY");
-  Q_EMIT pathPlanningReady();
-  Q_EMIT logMessage(QString("경로 계획: %1").arg(QString::fromStdString(msg->data)));
+cv::Mat QNode::processImage(const cv::Mat& input)
+{
+  cv::Mat processed = input.clone();
+  
+  if (!vision_active_) {
+    return processed;
+  }
+  
+  // Apply image processing for better melon detection
+  cv::Mat hsv, mask, result;
+  cv::cvtColor(input, hsv, cv::COLOR_BGR2HSV);
+  
+  // Define color range for yellow/orange melons (참외)
+  cv::Scalar lower_yellow(15, 50, 50);   // Lower HSV threshold
+  cv::Scalar upper_yellow(35, 255, 255); // Upper HSV threshold
+  
+  // Create mask for yellow/orange colors
+  cv::inRange(hsv, lower_yellow, upper_yellow, mask);
+  
+  // Apply morphological operations to clean up the mask
+  cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+  cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, kernel);
+  cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
+  
+  // Apply mask to original image
+  input.copyTo(result, mask);
+  
+  // Combine original and masked image for better visualization
+  cv::addWeighted(input, 0.7, result, 0.3, 0, processed);
+  
+  return processed;
+}
+
+void QNode::detectMelons(const cv::Mat& image)
+{
+  cv::Mat hsv, mask;
+  cv::cvtColor(image, hsv, cv::COLOR_BGR2HSV);
+  
+  // Define color range for ripe melons (yellow/orange)
+  cv::Scalar lower_ripe(15, 50, 50);
+  cv::Scalar upper_ripe(35, 255, 255);
+  cv::inRange(hsv, lower_ripe, upper_ripe, mask);
+  
+  // Find contours
+  std::vector<std::vector<cv::Point>> contours;
+  cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+  
+  int total_melons = 0;
+  int ripe_melons = 0;
+  double target_x = -1, target_y = -1;
+  double max_area = 0;
+  
+  for (const auto& contour : contours)
+  {
+    double area = cv::contourArea(contour);
+    
+    // Filter by minimum area (adjust based on your camera setup)
+    if (area > 1000) // Minimum area threshold
+    {
+      total_melons++;
+      
+      // Calculate centroid
+      cv::Moments moments = cv::moments(contour);
+      if (moments.m00 > 0)
+      {
+        double cx = moments.m10 / moments.m00;
+        double cy = moments.m01 / moments.m00;
+        
+        // Draw bounding box and label
+        cv::Rect bbox = cv::boundingRect(contour);
+        cv::rectangle(processed_image_, bbox, cv::Scalar(0, 255, 0), 2);
+        
+        // Check if this melon is "ripe" based on color intensity
+        cv::Mat roi = hsv(bbox);
+        cv::Scalar mean_color = cv::mean(roi, mask(bbox));
+        
+        if (mean_color[1] > 100) // Saturation threshold for ripeness
+        {
+          ripe_melons++;
+          cv::putText(processed_image_, "RIPE", 
+                     cv::Point(bbox.x, bbox.y - 10),
+                     cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
+          
+          // Select largest ripe melon as target
+          if (area > max_area)
+          {
+            max_area = area;
+            target_x = cx;
+            target_y = cy;
+          }
+        }
+        else
+        {
+          cv::putText(processed_image_, "UNRIPE", 
+                     cv::Point(bbox.x, bbox.y - 10),
+                     cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 255), 2);
+        }
+        
+        // Draw center point
+        cv::circle(processed_image_, cv::Point(cx, cy), 5, cv::Scalar(255, 0, 0), -1);
+      }
+    }
+  }
+  
+  // Draw crosshair for selected target
+  if (target_x > 0 && target_y > 0)
+  {
+    cv::line(processed_image_, 
+             cv::Point(target_x - 20, target_y), 
+             cv::Point(target_x + 20, target_y), 
+             cv::Scalar(0, 0, 255), 3);
+    cv::line(processed_image_, 
+             cv::Point(target_x, target_y - 20), 
+             cv::Point(target_x, target_y + 20), 
+             cv::Scalar(0, 0, 255), 3);
+    
+    Q_EMIT targetSelected(target_x, target_y);
+  }
+  
+  // Add detection info overlay
+  std::string info = "Total: " + std::to_string(total_melons) + 
+                    " | Ripe: " + std::to_string(ripe_melons);
+  cv::putText(processed_image_, info, cv::Point(10, 30),
+              cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255, 255, 255), 2);
+  
+  Q_EMIT melonDetected(total_melons, ripe_melons);
 }

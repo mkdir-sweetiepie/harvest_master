@@ -2,35 +2,32 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>harvest_master</name>
-  <version>1.0.0</version>
-  <description>BARAM 농작물 수확 로봇 관제 시스템 - Qt GUI 기반 통합 제어 인터페이스</description>
-
-  <maintainer email="hong091788@naver.com">홍지현</maintainer>
+  <version>2.1.0</version>
+  <description>Harvest Master - 참외 수확 로봇 GUI with Vision and Manipulation Control</description>
+  <maintainer email="harvest@example.com">Harvest Team</maintainer>
   <license>MIT</license>
-
-  <author email="02william02@hanmail.net">임동균</author>
-  <author email="dhrkgus-25@naver.com">오가현</author>
-  <author email="hong091788@naver.com">홍지현</author>
-  <author email="wjddnrud4487@naver.com">정우경</author>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- ROS 2 Dependencies -->
+  <!-- ROS2 Core Dependencies -->
   <depend>rclcpp</depend>
-  <depend>std_msgs</depend>
-  <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
-
-  <!-- Qt Dependencies -->
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  
+  <!-- Vision System Dependencies -->
+  <depend>cv_bridge</depend>
+  <depend>opencv</depend>
+  <depend>image_transport</depend>
+  
+  <!-- Qt5 Dependencies -->
+  <build_depend>qt5-qmake</build_depend>
   <build_depend>qtbase5-dev</build_depend>
-  <exec_depend>qtbase5-dev</exec_depend>
-
-  <!-- System Dependencies -->
-  <build_depend>libqt5-core</build_depend>
-  <build_depend>libqt5-widgets</build_depend>
   <exec_depend>libqt5-core</exec_depend>
+  <exec_depend>libqt5-gui</exec_depend>
   <exec_depend>libqt5-widgets</exec_depend>
 
+  <!-- Testing Dependencies -->
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
