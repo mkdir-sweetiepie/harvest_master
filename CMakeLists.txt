@@ -1,6 +1,16 @@
 cmake_minimum_required(VERSION 3.8)
 project(harvest_master)
 
+# Default to C99
+if(NOT CMAKE_C_STANDARD)
+  set(CMAKE_C_STANDARD 99)
+endif()
+
+# Default to C++17
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -8,89 +18,35 @@ endif()
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(cv_bridge REQUIRED)
-find_package(OpenCV REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(vision_msgs REQUIRED)
 
-# Qt5 dependencies
-find_package(Qt5 REQUIRED COMPONENTS Core Widgets)
-
-# Set Qt5 MOC, UIC, RCC
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTORCC ON)
-
-# IMPORTANT: Set the UI search path for AUTOUIC
-set(CMAKE_AUTOUIC_SEARCH_PATHS ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+# Add executable
+add_executable(master_node src/master_node.cpp)
 
 # Include directories
-include_directories(include)
+target_include_directories(master_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
 
-# Qt5 UI files (full path)
-set(UI_FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/ui/mainwindow.ui
-)
-
-# Qt5 Resource files  
-set(RESOURCE_FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/resources/images.qrc
-)
-
-# Source files
-set(SOURCES
-  src/main.cpp
-  src/main_window.cpp
-  src/qnode.cpp
-)
-
-# Header files that need MOC
-set(HEADERS
-  include/harvest_master/main_window.hpp
-  include/harvest_master/qnode.hpp
-)
-
-# Create executable
-add_executable(${PROJECT_NAME}
-  ${SOURCES}
-  ${HEADERS}
-  ${UI_FILES}
-  ${RESOURCE_FILES}
-)
-
-# Link libraries
-target_link_libraries(${PROJECT_NAME}
-  Qt5::Core
-  Qt5::Widgets
-  ${OpenCV_LIBRARIES}
-)
-
-# ROS2 dependencies
-ament_target_dependencies(${PROJECT_NAME}
+# Link dependencies
+ament_target_dependencies(master_node
   rclcpp
-  sensor_msgs
-  geometry_msgs
   std_msgs
-  cv_bridge
-  OpenCV
+  std_srvs
+  geometry_msgs
+  vision_msgs
 )
 
 # Install targets
-install(TARGETS
-  ${PROJECT_NAME}
-  DESTINATION lib/${PROJECT_NAME}
-)
+install(TARGETS master_node
+  DESTINATION lib/${PROJECT_NAME})
 
-# Install directories
-install(DIRECTORY
-  ui/
-  DESTINATION share/${PROJECT_NAME}/ui/
-)
-
-install(DIRECTORY
-  resources/
-  DESTINATION share/${PROJECT_NAME}/resources/
+# Install header files
+install(DIRECTORY include/
+  DESTINATION include/
 )
 
 if(BUILD_TESTING)

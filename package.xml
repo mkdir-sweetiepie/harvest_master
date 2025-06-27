@@ -1,35 +1,22 @@
 <?xml version="1.0"?>
-<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>harvest_master</name>
-  <version>2.1.0</version>
-  <description>Harvest Master - 참외 수확 로봇 GUI with Vision and Manipulation Control</description>
-  <maintainer email="harvest@example.com">Harvest Team</maintainer>
-  <license>MIT</license>
+  <version>0.1.0</version>
+  <description>
+
+    harvest_master
+
+  </description>
+  <maintainer email="hong091788@naver.com">hyeon</maintainer>
+  <author>hyeon</author>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- ROS2 Core Dependencies -->
   <depend>rclcpp</depend>
-  <depend>sensor_msgs</depend>
-  <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
-  
-  <!-- Vision System Dependencies -->
-  <depend>cv_bridge</depend>
-  <depend>opencv</depend>
-  <depend>image_transport</depend>
-  
-  <!-- Qt5 Dependencies -->
-  <build_depend>qt5-qmake</build_depend>
-  <build_depend>qtbase5-dev</build_depend>
-  <exec_depend>libqt5-core</exec_depend>
-  <exec_depend>libqt5-gui</exec_depend>
-  <exec_depend>libqt5-widgets</exec_depend>
-
-  <!-- Testing Dependencies -->
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
+  <depend>geometry_msgs</depend>
+  <depend>vision_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
