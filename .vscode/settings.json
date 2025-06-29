@@ -52,5 +52,11 @@
     "/home/hyeon/harvest_ws/install/hardware_msgs/local/lib/python3.10/dist-packages",
     "/opt/ros/humble/lib/python3.10/site-packages",
     "/opt/ros/humble/local/lib/python3.10/dist-packages"
-  ]
+  ],
+  "files.associations": {
+    "*.py": "python",
+    "*.msg": "ros.msg",
+    "chrono": "cpp",
+    "functional": "cpp"
+  }
 }
