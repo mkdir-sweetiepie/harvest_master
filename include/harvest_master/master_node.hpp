@@ -140,8 +140,8 @@ class MasterNode : public rclcpp::Node {
   void sendFoundationCommand();
   void sendReturnHomeCommand();
   void sendGripperCommand(bool open);
-  void activateYolo();
-  void activateFoundation();
+  void activateYolo(bool activate = true);        // 🔹 매개변수 추가
+  void activateFoundation(bool activate = true);  // 🔹 매개변수 추가
   void sendShutdownSignal();
 
   // ===== 개별 전송 함수들 =====

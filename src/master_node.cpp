@@ -191,12 +191,13 @@ void MasterNode::handleFruitRecognitionState() {
 
   if (!recognition_started_) {
     RCLCPP_INFO(this->get_logger(), "FRUIT_RECOGNITION : 과일 인식 시작");
-    activateYolo();
+    activateYolo(true);  // 🔹 명시적으로 true 전달
     recognition_started_ = true;
   }
 
   if (tsp_complete_.load()) {
     RCLCPP_INFO(this->get_logger(), "FRUIT_RECOGNITION : 과일 인식 및 TSP 완료");
+    activateYolo(false);  // 🔹 작업 완료 후 false 발행
     tsp_complete_.store(false);
     current_fruit_index_.store(0);
     changeState(MasterState::HARVEST_LOOP);
@@ -240,12 +241,13 @@ void MasterNode::handleFoundationProcessingState() {
 
   if (!foundation_started_) {
     RCLCPP_INFO(this->get_logger(), "FOUNDATION : 6D 포즈 추정 시작");
-    activateFoundation();
+    activateFoundation(true);  // 🔹 명시적으로 true 전달
     foundation_started_ = true;
   }
 
   if (foundation_complete_.load()) {
     RCLCPP_INFO(this->get_logger(), "FOUNDATION : 6D 포즈 추정 완료");
+    activateFoundation(false);  // 🔹 작업 완료 후 false 발행
     foundation_complete_.store(false);
     changeState(MasterState::GRIPPER_OPEN);
   }
@@ -365,6 +367,10 @@ void MasterNode::handleErrorState() {
 
   RCLCPP_ERROR(this->get_logger(), "ERROR_STATE : 에러 상태 처리 중... (횟수: %d)", error_count_);
 
+  // 🔹 에러 발생 시 모든 모듈 비활성화
+  activateYolo(false);
+  activateFoundation(false);
+
   if (error_count_ >= 3) {
     RCLCPP_ERROR(this->get_logger(), "최대 에러 횟수 초과, 시스템 종료");
     changeState(MasterState::SHUTDOWN);
@@ -377,6 +383,11 @@ void MasterNode::handleErrorState() {
 
 void MasterNode::handleShutdownState() {
   RCLCPP_INFO(this->get_logger(), "SHUTDOWN : 모든 노드 종료 신호 전송");
+
+  // 🔹 종료 전 모든 모듈 비활성화
+  activateYolo(false);
+  activateFoundation(false);
+
   sendShutdownSignal();
 
   // 리소스 정리
@@ -582,18 +593,18 @@ void MasterNode::sendGripperCommand(bool open) {
 
 // ===== 모듈 활성화 함수들 =====
 
-void MasterNode::activateYolo() {
+void MasterNode::activateYolo(bool activate) {
   auto msg = std_msgs::msg::Bool();
-  msg.data = true;
+  msg.data = activate;
   yolo_pub_->publish(msg);
-  RCLCPP_INFO(this->get_logger(), "YOLO 모듈 활성화");
+  RCLCPP_INFO(this->get_logger(), "YOLO 모듈 %s", activate ? "활성화" : "비활성화");
 }
 
-void MasterNode::activateFoundation() {
+void MasterNode::activateFoundation(bool activate) {
   auto msg = std_msgs::msg::Bool();
-  msg.data = true;
+  msg.data = activate;
   foundation_pub_->publish(msg);
-  RCLCPP_INFO(this->get_logger(), "Foundation 모듈 활성화");
+  RCLCPP_INFO(this->get_logger(), "Foundation 모듈 %s", activate ? "활성화" : "비활성화");
 }
 
 void MasterNode::sendShutdownSignal() {
