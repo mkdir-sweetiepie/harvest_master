@@ -94,6 +94,8 @@ void MasterNode::initializeVariables() {
 
 void MasterNode::resetStateFlags() {
   std::lock_guard<std::mutex> lock(state_mutex_);
+
+  // 상태별 동작 플래그 리셋
   initial_command_sent_ = false;
   recognition_started_ = false;
   move_command_sent_ = false;
@@ -105,6 +107,26 @@ void MasterNode::resetStateFlags() {
   next_move_sent_ = false;
   return_sent_ = false;
   error_count_ = 0;
+
+  // 콜백 처리 완료 플래그 리셋 (새로운 상태에서 다시 받을 수 있도록)
+  movement_complete_.store(false);
+  tsp_complete_.store(false);
+  foundation_complete_.store(false);
+  gripper_open_complete_.store(false);
+  gripper_close_complete_.store(false);
+}
+
+// ===== 선택적 플래그 리셋 함수들 =====
+
+void MasterNode::resetMovementFlag() { movement_complete_.store(false); }
+
+void MasterNode::resetTspFlag() { tsp_complete_.store(false); }
+
+void MasterNode::resetFoundationFlag() { foundation_complete_.store(false); }
+
+void MasterNode::resetGripperFlags() {
+  gripper_open_complete_.store(false);
+  gripper_close_complete_.store(false);
 }
 
 // ===== 메인 상태 머신 =====
@@ -224,6 +246,8 @@ void MasterNode::handleHarvestLoopState() {
   std::lock_guard<std::mutex> state_lock(state_mutex_);
   if (!move_command_sent_) {
     RCLCPP_INFO(this->get_logger(), "HARVEST_LOOP : %d번째 과일로 이동(인덱스 : %d)", current_index + 1, priority_list_[current_index]);
+
+    resetMovementFlag();
     sendTspCommand();
     move_command_sent_ = true;
   }
@@ -231,7 +255,6 @@ void MasterNode::handleHarvestLoopState() {
   if (movement_complete_.load()) {
     RCLCPP_INFO(this->get_logger(), "HARVEST_LOOP : 과일 위치 도착");
     current_position_ = fruit_positions_[priority_list_[current_index]];
-    movement_complete_.store(false);
     changeState(MasterState::FOUNDATION_PROCESSING);
   }
 }
@@ -241,14 +264,15 @@ void MasterNode::handleFoundationProcessingState() {
 
   if (!foundation_started_) {
     RCLCPP_INFO(this->get_logger(), "FOUNDATION : 6D 포즈 추정 시작");
-    activateFoundation(true);  // 🔹 명시적으로 true 전달
+
+    resetFoundationFlag();
+    activateFoundation(true);
     foundation_started_ = true;
   }
 
   if (foundation_complete_.load()) {
     RCLCPP_INFO(this->get_logger(), "FOUNDATION : 6D 포즈 추정 완료");
-    activateFoundation(false);  // 🔹 작업 완료 후 false 발행
-    foundation_complete_.store(false);
+    activateFoundation(false);
     changeState(MasterState::GRIPPER_OPEN);
   }
 }
@@ -274,6 +298,8 @@ void MasterNode::handleMoveToCuttingState() {
 
   if (!cutting_move_sent_) {
     RCLCPP_INFO(this->get_logger(), "MOVE_TO_CUTTING : 절단점으로 이동");
+
+    resetMovementFlag();
     sendFoundationCommand();
     cutting_move_sent_ = true;
   }
@@ -281,7 +307,6 @@ void MasterNode::handleMoveToCuttingState() {
   if (movement_complete_.load()) {
     RCLCPP_INFO(this->get_logger(), "MOVE_TO_CUTTING : 절단점 도착");
     current_position_ = cutting_point_;
-    movement_complete_.store(false);
     changeState(MasterState::GRIPPER_CLOSE);
   }
 }
@@ -615,15 +640,26 @@ void MasterNode::sendShutdownSignal() {
 }
 
 // ===== 콜백 함수들 =====
-
 void MasterNode::movementCallback(const std_msgs::msg::Bool::SharedPtr msg) {
-  movement_complete_.store(msg->data);
+  // 이미 처리된 상태라면 무시
+  if (movement_complete_.load()) {
+    return;
+  }
+
+  // 완료 신호만 처리 (false는 무시)
   if (msg->data) {
-    RCLCPP_INFO(this->get_logger(), "이동 완료 신호 수신");
+    movement_complete_.store(true);
+    RCLCPP_INFO(this->get_logger(), "이동 완료 신호 수신 (한 번만 처리)");
   }
 }
 
 void MasterNode::tspCallback(const vision_msgs::msg::HarvestOrdering::SharedPtr msg) {
+  // 이미 TSP 결과를 처리했다면 무시
+  if (tsp_complete_.load()) {
+    RCLCPP_DEBUG(this->get_logger(), "TSP 결과 이미 처리됨 - 무시");
+    return;
+  }
+
   RCLCPP_INFO(this->get_logger(), "TSP 결과 수신 : %u개 과일", msg->total_objects);
 
   if (msg->total_objects == 0) {
@@ -661,19 +697,28 @@ void MasterNode::tspCallback(const vision_msgs::msg::HarvestOrdering::SharedPtr 
     return;
   }
 
+  // 한 번만 처리되도록 플래그 설정
   tsp_complete_.store(true);
-  RCLCPP_INFO(this->get_logger(), "TSP 우선순위 수신 : %zu개 순서", priority_list_.size());
+  RCLCPP_INFO(this->get_logger(), "TSP 우선순위 수신 완료 : %zu개 순서 (한 번만 처리)", priority_list_.size());
 }
 
 void MasterNode::foundationCallback(const vision_msgs::msg::CropPose::SharedPtr msg) {
+  // 이미 Foundation 결과를 처리했다면 무시
+  if (foundation_complete_.load()) {
+    RCLCPP_DEBUG(this->get_logger(), "Foundation 결과 이미 처리됨 - 무시");
+    return;
+  }
+
   geometry_msgs::msg::Point new_cutting_point;
   new_cutting_point.x = msg->x;
   new_cutting_point.y = msg->y;
   new_cutting_point.z = msg->z;
 
   cutting_point_ = new_cutting_point;
+
+  // 한 번만 처리되도록 플래그 설정
   foundation_complete_.store(true);
-  RCLCPP_INFO(this->get_logger(), "절단점 수신 : (%.3f, %.3f, %.3f)", cutting_point_.x, cutting_point_.y, cutting_point_.z);
+  RCLCPP_INFO(this->get_logger(), "절단점 수신 완료 : (%.3f, %.3f, %.3f) (한 번만 처리)", cutting_point_.x, cutting_point_.y, cutting_point_.z);
 }
 
 // ===== Main 함수 =====

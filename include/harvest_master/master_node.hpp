@@ -134,14 +134,20 @@ class MasterNode : public rclcpp::Node {
   void changeState(MasterState new_state);
   void resetStateFlags();
 
+  // ===== 선택적 플래그 리셋 함수들 =====
+  void resetMovementFlag();
+  void resetTspFlag();
+  void resetFoundationFlag();
+  void resetGripperFlags();
+
   // 로봇 명령 전송 (용도별 구분)
   void sendInitialCommand();
   void sendTspCommand();
   void sendFoundationCommand();
   void sendReturnHomeCommand();
   void sendGripperCommand(bool open);
-  void activateYolo(bool activate = true);        // 🔹 매개변수 추가
-  void activateFoundation(bool activate = true);  // 🔹 매개변수 추가
+  void activateYolo(bool activate = true);
+  void activateFoundation(bool activate = true);
   void sendShutdownSignal();
 
   // ===== 개별 전송 함수들 =====
