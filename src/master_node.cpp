@@ -538,15 +538,20 @@ void MasterNode::sendReturnHomeCommand() {
   vision_msgs::msg::HarvestOrdering default_harvest;
   default_harvest.header.stamp = this->now();
   default_harvest.header.frame_id = "base_link";
-  default_harvest.total_objects = 1;
+  default_harvest.total_objects = fruit_positions_.size();
 
-  vision_msgs::msg::DetectedCrop default_crop;
-  default_crop.id = 1;
-  default_crop.x = 2.0;
-  default_crop.y = 0.0;
-  default_crop.z = 0.0;
-  default_harvest.objects.push_back(default_crop);
-  default_harvest.crop_ids.push_back(1);
+  for (size_t i = 0; i < fruit_positions_.size(); ++i) {
+    vision_msgs::msg::DetectedCrop crop;
+    crop.id = static_cast<uint32_t>(i + 1);
+    crop.x = fruit_positions_[i].x;
+    crop.y = fruit_positions_[i].y;
+    crop.z = fruit_positions_[i].z;
+    default_harvest.objects.push_back(crop);
+  }
+
+  for (int priority : priority_list_) {
+    default_harvest.crop_ids.push_back(static_cast<uint32_t>(priority + 1));
+  }
 
   RCLCPP_INFO(this->get_logger(), "Return: 1. Sending path command...");
   sendPathCommand(default_harvest);
