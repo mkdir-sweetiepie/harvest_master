@@ -44,12 +44,6 @@ void MasterNode::initializePublishers() {
   start_pub_ = this->create_publisher<std_msgs::msg::Bool>("/start_command", 10);
   goal_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/goal_command", 10);
 
-  // 잘되면 삭제 예정
-  // path_pub_ = this->create_publisher<vision_msgs::msg::HarvestOrdering>("/harvest_order", 10);
-  // auto qos = rclcpp::QoS(10).transient_local();
-  // path_pub_ = this->create_publisher<vision_msgs::msg::HarvestOrdering>("/harvest_order", qos);
-
-  // QoS 설정: path_node와 map_node와 호환되도록 transient_local 사용
   rclcpp::QoS qos_transient(1);
   qos_transient.transient_local();
 
@@ -615,24 +609,16 @@ void MasterNode::sendGripperCommand(bool open) {
     return;
   }
 
-  try {
-    auto future_result = client->async_send_request(request);
-    auto response = future_result.get();
-    if (response->success) {
-      if (open)
-        gripper_open_complete_.store(true);
-      else
-        gripper_close_complete_.store(true);
+  // ★ 서비스 호출만 하고 응답 기다리지 않음
+  client->async_send_request(request);
 
-      RCLCPP_INFO(this->get_logger(), "그리퍼 %s 성공", action.c_str());
-    } else {
-      RCLCPP_ERROR(this->get_logger(), "그리퍼 %s 실패: %s", action.c_str(), response->message.c_str());
-    }
-  } catch (const std::exception& e) {
-    RCLCPP_ERROR(this->get_logger(), "그리퍼 %s 서비스 호출 중 예외 발생: %s", action.c_str(), e.what());
-  }
+  // ★ 바로 완료 처리
+  if (open)
+    gripper_open_complete_.store(true);
+  else
+    gripper_close_complete_.store(true);
 
-  RCLCPP_INFO(this->get_logger(), "그리퍼 %s 명령 전송됨", action.c_str());
+  RCLCPP_INFO(this->get_logger(), "그리퍼 %s 명령 전송 완료 (응답 대기 안 함)", action.c_str());
 }
 
 // ===== 모듈 활성화 함수들 =====
