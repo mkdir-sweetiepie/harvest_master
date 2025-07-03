@@ -463,28 +463,35 @@ void MasterNode::sendTspCommand() {
   geometry_msgs::msg::Point current_fruit_goal = fruit_positions_[priority_list_[current_index]];
   std::vector<double> goal_array = {current_fruit_goal.x-0.25, current_fruit_goal.y, current_fruit_goal.z};
 
-  // TSP에서 받은 HarvestOrdering 메시지 전송
-  vision_msgs::msg::HarvestOrdering tsp_harvest;
-  tsp_harvest.header.stamp = this->now();
-  tsp_harvest.header.frame_id = "base_link";
-  tsp_harvest.total_objects = fruit_positions_.size();
+  // 전체 시스템에서 처음 한 번만 path command 전송
+  static bool path_command_sent = false;
+  if (!path_command_sent) {
+    // TSP에서 받은 HarvestOrdering 메시지 전송
+    vision_msgs::msg::HarvestOrdering tsp_harvest;
+    tsp_harvest.header.stamp = this->now();
+    tsp_harvest.header.frame_id = "base_link";
+    tsp_harvest.total_objects = fruit_positions_.size();
 
-  for (size_t i = 0; i < fruit_positions_.size(); ++i) {
-    vision_msgs::msg::DetectedCrop crop;
-    crop.id = static_cast<uint32_t>(i + 1);
-    crop.x = fruit_positions_[i].x;
-    crop.y = fruit_positions_[i].y;
-    crop.z = fruit_positions_[i].z;
-    tsp_harvest.objects.push_back(crop);
+    for (size_t i = 0; i < fruit_positions_.size(); ++i) {
+      vision_msgs::msg::DetectedCrop crop;
+      crop.id = static_cast<uint32_t>(i + 1);
+      crop.x = fruit_positions_[i].x;
+      crop.y = fruit_positions_[i].y;
+      crop.z = fruit_positions_[i].z;
+      tsp_harvest.objects.push_back(crop);
+    }
+
+    for (int priority : priority_list_) {
+      tsp_harvest.crop_ids.push_back(static_cast<uint32_t>(priority + 1));
+    }
+
+    RCLCPP_INFO(this->get_logger(), "TSP: 1. Sending path command... (전체 시스템에서 처음)");
+    sendPathCommand(tsp_harvest);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    path_command_sent = true;
+  } else {
+    RCLCPP_INFO(this->get_logger(), "TSP: Path command 생략 (이미 전송됨)");
   }
-
-  for (int priority : priority_list_) {
-    tsp_harvest.crop_ids.push_back(static_cast<uint32_t>(priority + 1));
-  }
-
-  RCLCPP_INFO(this->get_logger(), "TSP: 1. Sending path command...");
-  sendPathCommand(tsp_harvest);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   RCLCPP_INFO(this->get_logger(), "TSP: 2. Sending goal command...");
   sendGoalCommand(goal_array);
@@ -518,9 +525,9 @@ void MasterNode::sendFoundationCommand() {
     foundation_harvest.crop_ids.push_back(static_cast<uint32_t>(priority + 1));
   }
 
-  RCLCPP_INFO(this->get_logger(), "Foundation: 1. Sending path command...");
-  sendPathCommand(foundation_harvest);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  // RCLCPP_INFO(this->get_logger(), "Foundation: 1. Sending path command...");
+  // sendPathCommand(foundation_harvest);
+  // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   RCLCPP_INFO(this->get_logger(), "Foundation: 2. Sending goal command...");
   sendGoalCommand(goal_array);
@@ -553,9 +560,9 @@ void MasterNode::sendReturnHomeCommand() {
     default_harvest.crop_ids.push_back(static_cast<uint32_t>(priority + 1));
   }
 
-  RCLCPP_INFO(this->get_logger(), "Return: 1. Sending path command...");
-  sendPathCommand(default_harvest);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  // RCLCPP_INFO(this->get_logger(), "Return: 1. Sending path command...");
+  // sendPathCommand(default_harvest);
+  // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   RCLCPP_INFO(this->get_logger(), "Return: 2. Sending goal command...");
   sendGoalCommand(goal_array);
