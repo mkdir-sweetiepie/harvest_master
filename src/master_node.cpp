@@ -623,6 +623,9 @@ void MasterNode::sendGripperCommand(bool open) {
   else
     gripper_close_complete_.store(true);
 
+  // delay(100ms); // 서비스 호출 후 약간의 지연 추가
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
   RCLCPP_INFO(this->get_logger(), "그리퍼 %s 명령 전송 완료 (응답 대기 안 함)", action.c_str());
 }
 
