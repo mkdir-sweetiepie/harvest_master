@@ -461,7 +461,7 @@ void MasterNode::sendTspCommand() {
   int current_index = current_fruit_index_.load();
 
   geometry_msgs::msg::Point current_fruit_goal = fruit_positions_[priority_list_[current_index]];
-  std::vector<double> goal_array = {current_fruit_goal.x, current_fruit_goal.y, current_fruit_goal.z};
+  std::vector<double> goal_array = {current_fruit_goal.x-0.25, current_fruit_goal.y, current_fruit_goal.z};
 
   // TSP에서 받은 HarvestOrdering 메시지 전송
   vision_msgs::msg::HarvestOrdering tsp_harvest;
