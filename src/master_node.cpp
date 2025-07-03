@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace std::chrono_literals;
@@ -42,7 +43,18 @@ void MasterNode::initializePublishers() {
   // 경로 계획 노드로 다양한 명령 전송
   start_pub_ = this->create_publisher<std_msgs::msg::Bool>("/start_command", 10);
   goal_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/goal_command", 10);
-  path_pub_ = this->create_publisher<vision_msgs::msg::HarvestOrdering>("/harvest_order", 10);
+
+  // 잘되면 삭제 예정
+  // path_pub_ = this->create_publisher<vision_msgs::msg::HarvestOrdering>("/harvest_order", 10);
+  // auto qos = rclcpp::QoS(10).transient_local();
+  // path_pub_ = this->create_publisher<vision_msgs::msg::HarvestOrdering>("/harvest_order", qos);
+
+  // QoS 설정: path_node와 map_node와 호환되도록 transient_local 사용
+  rclcpp::QoS qos_transient(1);
+  qos_transient.transient_local();
+
+  path_pub_ = this->create_publisher<vision_msgs::msg::HarvestOrdering>("/harvest_order", qos_transient);
+
   // 각 모듈 활성화 신호 전송
   foundation_pub_ = this->create_publisher<std_msgs::msg::Bool>("/foundation_activate", 10);
   yolo_pub_ = this->create_publisher<std_msgs::msg::Bool>("/yolo_activate", 10);
@@ -93,9 +105,6 @@ void MasterNode::initializeVariables() {
 }
 
 void MasterNode::resetStateFlags() {
-  std::lock_guard<std::mutex> lock(state_mutex_);
-
-  // 상태별 동작 플래그 리셋
   initial_command_sent_ = false;
   recognition_started_ = false;
   move_command_sent_ = false;
@@ -107,26 +116,6 @@ void MasterNode::resetStateFlags() {
   next_move_sent_ = false;
   return_sent_ = false;
   error_count_ = 0;
-
-  // 콜백 처리 완료 플래그 리셋 (새로운 상태에서 다시 받을 수 있도록)
-  movement_complete_.store(false);
-  tsp_complete_.store(false);
-  foundation_complete_.store(false);
-  gripper_open_complete_.store(false);
-  gripper_close_complete_.store(false);
-}
-
-// ===== 선택적 플래그 리셋 함수들 =====
-
-void MasterNode::resetMovementFlag() { movement_complete_.store(false); }
-
-void MasterNode::resetTspFlag() { tsp_complete_.store(false); }
-
-void MasterNode::resetFoundationFlag() { foundation_complete_.store(false); }
-
-void MasterNode::resetGripperFlags() {
-  gripper_open_complete_.store(false);
-  gripper_close_complete_.store(false);
 }
 
 // ===== 메인 상태 머신 =====
@@ -213,13 +202,13 @@ void MasterNode::handleFruitRecognitionState() {
 
   if (!recognition_started_) {
     RCLCPP_INFO(this->get_logger(), "FRUIT_RECOGNITION : 과일 인식 시작");
-    activateYolo(true);  // 🔹 명시적으로 true 전달
+    activateYolo(true);
     recognition_started_ = true;
   }
 
   if (tsp_complete_.load()) {
     RCLCPP_INFO(this->get_logger(), "FRUIT_RECOGNITION : 과일 인식 및 TSP 완료");
-    activateYolo(false);  // 🔹 작업 완료 후 false 발행
+    activateYolo(false);
     tsp_complete_.store(false);
     current_fruit_index_.store(0);
     changeState(MasterState::HARVEST_LOOP);
@@ -236,7 +225,6 @@ void MasterNode::handleHarvestLoopState() {
 
   int current_index = current_fruit_index_.load();
 
-  // 모든 과일 수확 완료 검사
   if (static_cast<size_t>(current_index) >= priority_list_.size()) {
     RCLCPP_INFO(this->get_logger(), "HARVEST_LOOP : 모든 과일 수확 완료");
     changeState(MasterState::RETURN_HOME);
@@ -246,8 +234,6 @@ void MasterNode::handleHarvestLoopState() {
   std::lock_guard<std::mutex> state_lock(state_mutex_);
   if (!move_command_sent_) {
     RCLCPP_INFO(this->get_logger(), "HARVEST_LOOP : %d번째 과일로 이동(인덱스 : %d)", current_index + 1, priority_list_[current_index]);
-
-    resetMovementFlag();
     sendTspCommand();
     move_command_sent_ = true;
   }
@@ -255,6 +241,7 @@ void MasterNode::handleHarvestLoopState() {
   if (movement_complete_.load()) {
     RCLCPP_INFO(this->get_logger(), "HARVEST_LOOP : 과일 위치 도착");
     current_position_ = fruit_positions_[priority_list_[current_index]];
+    movement_complete_.store(false);
     changeState(MasterState::FOUNDATION_PROCESSING);
   }
 }
@@ -264,8 +251,6 @@ void MasterNode::handleFoundationProcessingState() {
 
   if (!foundation_started_) {
     RCLCPP_INFO(this->get_logger(), "FOUNDATION : 6D 포즈 추정 시작");
-
-    resetFoundationFlag();
     activateFoundation(true);
     foundation_started_ = true;
   }
@@ -273,6 +258,7 @@ void MasterNode::handleFoundationProcessingState() {
   if (foundation_complete_.load()) {
     RCLCPP_INFO(this->get_logger(), "FOUNDATION : 6D 포즈 추정 완료");
     activateFoundation(false);
+    foundation_complete_.store(false);
     changeState(MasterState::GRIPPER_OPEN);
   }
 }
@@ -298,8 +284,6 @@ void MasterNode::handleMoveToCuttingState() {
 
   if (!cutting_move_sent_) {
     RCLCPP_INFO(this->get_logger(), "MOVE_TO_CUTTING : 절단점으로 이동");
-
-    resetMovementFlag();
     sendFoundationCommand();
     cutting_move_sent_ = true;
   }
@@ -307,6 +291,7 @@ void MasterNode::handleMoveToCuttingState() {
   if (movement_complete_.load()) {
     RCLCPP_INFO(this->get_logger(), "MOVE_TO_CUTTING : 절단점 도착");
     current_position_ = cutting_point_;
+    movement_complete_.store(false);
     changeState(MasterState::GRIPPER_CLOSE);
   }
 }
@@ -392,7 +377,6 @@ void MasterNode::handleErrorState() {
 
   RCLCPP_ERROR(this->get_logger(), "ERROR_STATE : 에러 상태 처리 중... (횟수: %d)", error_count_);
 
-  // 🔹 에러 발생 시 모든 모듈 비활성화
   activateYolo(false);
   activateFoundation(false);
 
@@ -409,7 +393,6 @@ void MasterNode::handleErrorState() {
 void MasterNode::handleShutdownState() {
   RCLCPP_INFO(this->get_logger(), "SHUTDOWN : 모든 노드 종료 신호 전송");
 
-  // 🔹 종료 전 모든 모듈 비활성화
   activateYolo(false);
   activateFoundation(false);
 
@@ -429,16 +412,25 @@ void MasterNode::handleShutdownState() {
 
 void MasterNode::changeState(MasterState new_state) {
   MasterState old_state = current_state_.load();
-  current_state_.store(new_state);
-  state_start_time_ = this->now();
-  resetStateFlags();
 
+  current_state_.store(new_state);
+
+  state_start_time_ = this->now();
+
+  resetStateFlags();
   RCLCPP_INFO(this->get_logger(), "상태 전환: %d -> %d", static_cast<int>(old_state), static_cast<int>(new_state));
 }
 
 // ===== 로봇 명령 전송 함수들 (용도별 구분) =====
 
 void MasterNode::sendInitialCommand() {
+  // 한 번만 보내도록 플래그 체크 추가
+  static bool initial_sent = false;
+  if (initial_sent) {
+    RCLCPP_WARN(this->get_logger(), "Initial command already sent, skipping...");
+    return;
+  }
+
   std::vector<double> goal_array = {initial_goal_.x, initial_goal_.y, initial_goal_.z};
 
   vision_msgs::msg::HarvestOrdering default_harvest;
@@ -454,17 +446,25 @@ void MasterNode::sendInitialCommand() {
   default_harvest.objects.push_back(default_crop);
   default_harvest.crop_ids.push_back(1);
 
-  sendStartCommand(true);
-  sendGoalCommand(goal_array);
+  RCLCPP_INFO(this->get_logger(), "1. Sending path command...");
   sendPathCommand(default_harvest);
 
-  RCLCPP_INFO(this->get_logger(), "Initial command sent - Goal: (%.3f, %.3f, %.3f)", initial_goal_.x, initial_goal_.y, initial_goal_.z);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  RCLCPP_INFO(this->get_logger(), "2. Sending goal command...");
+  sendGoalCommand(goal_array);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  RCLCPP_INFO(this->get_logger(), "3. Sending start command...");
+  sendStartCommand(true);
+
+  initial_sent = true;
+  RCLCPP_INFO(this->get_logger(), "Initial command sequence completed - Goal: (%.3f, %.3f, %.3f)", initial_goal_.x, initial_goal_.y, initial_goal_.z);
 }
 
 void MasterNode::sendTspCommand() {
   int current_index = current_fruit_index_.load();
-
-  std::lock_guard<std::mutex> lock(data_mutex_);
 
   geometry_msgs::msg::Point current_fruit_goal = fruit_positions_[priority_list_[current_index]];
   std::vector<double> goal_array = {current_fruit_goal.x, current_fruit_goal.y, current_fruit_goal.z};
@@ -488,17 +488,22 @@ void MasterNode::sendTspCommand() {
     tsp_harvest.crop_ids.push_back(static_cast<uint32_t>(priority + 1));
   }
 
-  sendStartCommand(true);
-  sendGoalCommand(goal_array);
+  RCLCPP_INFO(this->get_logger(), "TSP: 1. Sending path command...");
   sendPathCommand(tsp_harvest);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  RCLCPP_INFO(this->get_logger(), "TSP: 2. Sending goal command...");
+  sendGoalCommand(goal_array);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  RCLCPP_INFO(this->get_logger(), "TSP: 3. Sending start command...");
+  sendStartCommand(true);
 
   RCLCPP_INFO(this->get_logger(), "TSP command sent - Goal: (%.3f, %.3f, %.3f)", current_fruit_goal.x, current_fruit_goal.y, current_fruit_goal.z);
 }
 
 void MasterNode::sendFoundationCommand() {
   std::vector<double> goal_array = {cutting_point_.x, cutting_point_.y, cutting_point_.z};
-
-  std::lock_guard<std::mutex> lock(data_mutex_);
 
   // 현재 수확 중인 과일 정보로 HarvestOrdering 생성
   vision_msgs::msg::HarvestOrdering foundation_harvest;
@@ -519,9 +524,16 @@ void MasterNode::sendFoundationCommand() {
     foundation_harvest.crop_ids.push_back(static_cast<uint32_t>(priority + 1));
   }
 
-  sendStartCommand(true);
-  sendGoalCommand(goal_array);
+  RCLCPP_INFO(this->get_logger(), "Foundation: 1. Sending path command...");
   sendPathCommand(foundation_harvest);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  RCLCPP_INFO(this->get_logger(), "Foundation: 2. Sending goal command...");
+  sendGoalCommand(goal_array);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  RCLCPP_INFO(this->get_logger(), "Foundation: 3. Sending start command...");
+  sendStartCommand(true);
 
   RCLCPP_INFO(this->get_logger(), "Foundation command sent - Goal: (%.3f, %.3f, %.3f)", cutting_point_.x, cutting_point_.y, cutting_point_.z);
 }
@@ -542,9 +554,16 @@ void MasterNode::sendReturnHomeCommand() {
   default_harvest.objects.push_back(default_crop);
   default_harvest.crop_ids.push_back(1);
 
-  sendStartCommand(true);
-  sendGoalCommand(goal_array);
+  RCLCPP_INFO(this->get_logger(), "Return: 1. Sending path command...");
   sendPathCommand(default_harvest);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  RCLCPP_INFO(this->get_logger(), "Return: 2. Sending goal command...");
+  sendGoalCommand(goal_array);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  RCLCPP_INFO(this->get_logger(), "Return: 3. Sending start command...");
+  sendStartCommand(true);
 
   RCLCPP_INFO(this->get_logger(), "Return home command sent - Goal: (%.3f, %.3f, %.3f)", initial_goal_.x, initial_goal_.y, initial_goal_.z);
 }
@@ -555,7 +574,7 @@ void MasterNode::sendStartCommand(bool start_signal) {
   auto msg = std_msgs::msg::Bool();
   msg.data = start_signal;
   start_pub_->publish(msg);
-  RCLCPP_DEBUG(this->get_logger(), "Start command sent: %s", start_signal ? "true" : "false");
+  RCLCPP_INFO(this->get_logger(), "Start command sent: %s", start_signal ? "true" : "false");
 }
 
 void MasterNode::sendGoalCommand(const std::vector<double>& goal_array) {
@@ -566,13 +585,22 @@ void MasterNode::sendGoalCommand(const std::vector<double>& goal_array) {
 
   auto msg = std_msgs::msg::Float64MultiArray();
   msg.data = goal_array;
+
   goal_pub_->publish(msg);
-  RCLCPP_DEBUG(this->get_logger(), "Goal command sent: [%.3f, %.3f, %.3f]", goal_array[0], goal_array[1], goal_array[2]);
+  RCLCPP_INFO(this->get_logger(), "Goal command sent: [%.3f, %.3f, %.3f]", goal_array[0], goal_array[1], goal_array[2]);
 }
 
 void MasterNode::sendPathCommand(const vision_msgs::msg::HarvestOrdering& harvest_order) {
+  // 메시지 유효성 검사
+  if (harvest_order.objects.empty()) {
+    RCLCPP_ERROR(this->get_logger(), "빈 harvest_order 메시지입니다!");
+    return;
+  }
+
   path_pub_->publish(harvest_order);
-  RCLCPP_DEBUG(this->get_logger(), "Path command sent: %u crops, %zu priorities", harvest_order.total_objects, harvest_order.crop_ids.size());
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  RCLCPP_INFO(this->get_logger(), "Path command sent: %u crops, %zu priorities", harvest_order.total_objects, harvest_order.crop_ids.size());
 }
 
 void MasterNode::sendGripperCommand(bool open) {
@@ -580,37 +608,28 @@ void MasterNode::sendGripperCommand(bool open) {
   auto client = open ? gripper_open_client_ : gripper_close_client_;
   std::string action = open ? "열기" : "닫기";
 
-  // 서비스 가용성 확인
-  if (!client->wait_for_service(std::chrono::seconds(1))) {
+  RCLCPP_INFO(this->get_logger(), "그리퍼 %s 서비스 호출 준비 중...", action.c_str());
+
+  if (!client->wait_for_service(std::chrono::seconds(2))) {
     RCLCPP_ERROR(this->get_logger(), "그리퍼 %s 서비스를 사용할 수 없습니다", action.c_str());
     return;
   }
 
-  // 비동기 서비스 호출 및 응답 처리 설정
-  auto future = client->async_send_request(request);
-
-  if (open) {
-    future.wait_for(std::chrono::seconds(1));
-    if (future.valid()) {
-      auto response = future.get();
-      if (response->success) {
+  try {
+    auto future_result = client->async_send_request(request);
+    auto response = future_result.get();
+    if (response->success) {
+      if (open)
         gripper_open_complete_.store(true);
-        RCLCPP_INFO(this->get_logger(), "그리퍼 열기 성공");
-      } else {
-        RCLCPP_ERROR(this->get_logger(), "그리퍼 열기 실패: %s", response->message.c_str());
-      }
-    }
-  } else {
-    future.wait_for(std::chrono::seconds(1));
-    if (future.valid()) {
-      auto response = future.get();
-      if (response->success) {
+      else
         gripper_close_complete_.store(true);
-        RCLCPP_INFO(this->get_logger(), "그리퍼 닫기 성공");
-      } else {
-        RCLCPP_ERROR(this->get_logger(), "그리퍼 닫기 실패: %s", response->message.c_str());
-      }
+
+      RCLCPP_INFO(this->get_logger(), "그리퍼 %s 성공", action.c_str());
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "그리퍼 %s 실패: %s", action.c_str(), response->message.c_str());
     }
+  } catch (const std::exception& e) {
+    RCLCPP_ERROR(this->get_logger(), "그리퍼 %s 서비스 호출 중 예외 발생: %s", action.c_str(), e.what());
   }
 
   RCLCPP_INFO(this->get_logger(), "그리퍼 %s 명령 전송됨", action.c_str());
@@ -640,26 +659,15 @@ void MasterNode::sendShutdownSignal() {
 }
 
 // ===== 콜백 함수들 =====
-void MasterNode::movementCallback(const std_msgs::msg::Bool::SharedPtr msg) {
-  // 이미 처리된 상태라면 무시
-  if (movement_complete_.load()) {
-    return;
-  }
 
-  // 완료 신호만 처리 (false는 무시)
+void MasterNode::movementCallback(const std_msgs::msg::Bool::SharedPtr msg) {
+  movement_complete_.store(msg->data);
   if (msg->data) {
-    movement_complete_.store(true);
-    RCLCPP_INFO(this->get_logger(), "이동 완료 신호 수신 (한 번만 처리)");
+    RCLCPP_INFO(this->get_logger(), "이동 완료 신호 수신");
   }
 }
 
 void MasterNode::tspCallback(const vision_msgs::msg::HarvestOrdering::SharedPtr msg) {
-  // 이미 TSP 결과를 처리했다면 무시
-  if (tsp_complete_.load()) {
-    RCLCPP_DEBUG(this->get_logger(), "TSP 결과 이미 처리됨 - 무시");
-    return;
-  }
-
   RCLCPP_INFO(this->get_logger(), "TSP 결과 수신 : %u개 과일", msg->total_objects);
 
   if (msg->total_objects == 0) {
@@ -697,28 +705,19 @@ void MasterNode::tspCallback(const vision_msgs::msg::HarvestOrdering::SharedPtr 
     return;
   }
 
-  // 한 번만 처리되도록 플래그 설정
   tsp_complete_.store(true);
-  RCLCPP_INFO(this->get_logger(), "TSP 우선순위 수신 완료 : %zu개 순서 (한 번만 처리)", priority_list_.size());
+  RCLCPP_INFO(this->get_logger(), "TSP 우선순위 수신 : %zu개 순서", priority_list_.size());
 }
 
 void MasterNode::foundationCallback(const vision_msgs::msg::CropPose::SharedPtr msg) {
-  // 이미 Foundation 결과를 처리했다면 무시
-  if (foundation_complete_.load()) {
-    RCLCPP_DEBUG(this->get_logger(), "Foundation 결과 이미 처리됨 - 무시");
-    return;
-  }
-
   geometry_msgs::msg::Point new_cutting_point;
   new_cutting_point.x = msg->x;
   new_cutting_point.y = msg->y;
   new_cutting_point.z = msg->z;
 
   cutting_point_ = new_cutting_point;
-
-  // 한 번만 처리되도록 플래그 설정
   foundation_complete_.store(true);
-  RCLCPP_INFO(this->get_logger(), "절단점 수신 완료 : (%.3f, %.3f, %.3f) (한 번만 처리)", cutting_point_.x, cutting_point_.y, cutting_point_.z);
+  RCLCPP_INFO(this->get_logger(), "절단점 수신 : (%.3f, %.3f, %.3f)", cutting_point_.x, cutting_point_.y, cutting_point_.z);
 }
 
 // ===== Main 함수 =====
